@@ -198,6 +198,7 @@ func (om *OUManager) GetOU(guid string) (*OU, error) {
 
 	// Expand attributes to include all OU-relevant fields
 	searchReq.Attributes = om.getAllOUAttributes()
+	searchReq.Controls = append(searchReq.Controls, ouDACLControl())
 	searchReq.TimeLimit = om.timeout
 
 	// Add the organizationalUnit filter
@@ -236,6 +237,7 @@ func (om *OUManager) getOUByDN(dn string) (*OU, error) {
 		Scope:      ScopeBaseObject,
 		Filter:     "(objectClass=organizationalUnit)",
 		Attributes: om.getAllOUAttributes(),
+		Controls:   []ldap.Control{ouDACLControl()},
 		SizeLimit:  1,
 		TimeLimit:  om.timeout,
 	}
@@ -454,6 +456,13 @@ func (om *OUManager) DeleteOU(guid string) error {
 	return nil
 }
 
+func ouDACLControl() ldap.Control {
+	return &ldap.ControlMicrosoftSDFlags{
+		Criticality:  true,
+		ControlValue: int32(SDFlagsDACLSecurityInformation),
+	}
+}
+
 // SetOUProtection toggles protect-from-accidental-deletion on an OU by
 // updating the DACL in nTSecurityDescriptor. It reads and writes only the
 // DACL using LDAP_SERVER_SD_FLAGS_OID so owner/group/SACL are not altered.
@@ -462,10 +471,7 @@ func (om *OUManager) SetOUProtection(ouDN string, protected bool) error {
 		return fmt.Errorf("OU DN cannot be empty")
 	}
 
-	sdFlags := &ldap.ControlMicrosoftSDFlags{
-		Criticality:  true,
-		ControlValue: int32(SDFlagsDACLSecurityInformation),
-	}
+	sdFlags := ouDACLControl()
 
 	searchReq := &SearchRequest{
 		BaseDN:     ouDN,
@@ -570,6 +576,7 @@ func (om *OUManager) SearchOUs(baseDN string, filter string) ([]*OU, error) {
 		Scope:      ScopeWholeSubtree,
 		Filter:     filter,
 		Attributes: om.getAllOUAttributes(),
+		Controls:   []ldap.Control{ouDACLControl()},
 		TimeLimit:  om.timeout,
 	}
 
@@ -602,6 +609,7 @@ func (om *OUManager) GetOUChildren(ctx context.Context, ouDN string) ([]*OU, err
 		Scope:      ScopeSingleLevel, // Only immediate children
 		Filter:     "(objectClass=organizationalUnit)",
 		Attributes: om.getAllOUAttributes(),
+		Controls:   []ldap.Control{ouDACLControl()},
 		TimeLimit:  om.timeout,
 	}
 

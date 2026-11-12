@@ -102,16 +102,18 @@ func TestRollbackCreate_OUProtectedRemovesProtectionBeforeDelete(t *testing.T) {
 		{Name: "ou", Values: []string{"TestOU"}},
 	}}}}
 
-	withSD := mock.MatchedBy(func(r *SearchRequest) bool { return len(r.Controls) > 0 })
-	plain := mock.MatchedBy(func(r *SearchRequest) bool { return len(r.Controls) == 0 })
+	descriptorOnly := mock.MatchedBy(func(r *SearchRequest) bool {
+		return len(r.Attributes) == 1 && r.Attributes[0] == "nTSecurityDescriptor"
+	})
+	ouAttributes := mock.MatchedBy(func(r *SearchRequest) bool { return len(r.Attributes) > 1 })
 
 	var order []string
 	mc.On("Add", mock.Anything, mock.Anything).Return(nil).Once()
-	mc.On("Search", mock.Anything, plain).Return(ouEntry, nil).Once()                   // initial read
-	mc.On("Search", mock.Anything, withSD).Return(sdResult(rawUnprotected), nil).Once() // protect: read SD
+	mc.On("Search", mock.Anything, ouAttributes).Return(ouEntry, nil).Once()                    // initial read
+	mc.On("Search", mock.Anything, descriptorOnly).Return(sdResult(rawUnprotected), nil).Once() // protect: read SD
 	mc.On("Modify", mock.Anything, mock.Anything).Return(nil).Run(func(mock.Arguments) { order = append(order, "protect") }).Once()
-	mc.On("Search", mock.Anything, plain).Return(nil, errPostAdd).Once()                                // refresh fails
-	mc.On("Search", mock.Anything, withSD).Return(sdResult(buildTestSecurityDescriptor(t)), nil).Once() // cleanup: read SD
+	mc.On("Search", mock.Anything, ouAttributes).Return(nil, errPostAdd).Once()                                 // refresh fails
+	mc.On("Search", mock.Anything, descriptorOnly).Return(sdResult(buildTestSecurityDescriptor(t)), nil).Once() // cleanup: read SD
 	mc.On("Modify", mock.Anything, mock.Anything).Return(nil).Run(func(mock.Arguments) { order = append(order, "unprotect") }).Once()
 	mc.On("Delete", mock.Anything, dn).Return(nil).Run(func(mock.Arguments) { order = append(order, "delete") }).Once()
 
